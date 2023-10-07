@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04 AS env_base
+FROM ubuntu:22.04 AS env_base
 # Pre-reqs
 RUN apt-get update && apt-get install --no-install-recommends -y \
     git vim build-essential python3-dev python3-venv python3-pip
@@ -10,7 +10,7 @@ ENV VIRTUAL_ENV=/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN pip3 install --upgrade pip setuptools && \
-    pip3 install torch torchvision torchaudio
+    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 FROM env_base AS app_base
 # Copy and enable all scripts
@@ -18,7 +18,7 @@ COPY ./scripts /scripts
 RUN chmod +x /scripts/*
 ### DEVELOPERS/ADVANCED USERS ###
 # Clone oobabooga/text-generation-webui
-RUN git clone https://github.com/oobabooga/text-generation-webui /src
+RUN git clone https://github.com/JohnTheNerd/text-generation-webui /src
 # Use script to check out specific version
 ARG VERSION_TAG
 ENV VERSION_TAG=${VERSION_TAG}
@@ -31,19 +31,20 @@ ENV LLAMA_CUBLAS=1
 # Copy source to app
 RUN cp -ar /src /app
 # Install oobabooga/text-generation-webui
-RUN --mount=type=cache,target=/root/.cache/pip pip3 install -r /app/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip3 install -r /app/requirements_cpu_only.txt && \
+    pip uninstall -y llama_cpp_python_cuda llama-cpp-python && pip install llama-cpp-python --force-reinstall --upgrade
 # Install extensions
 RUN --mount=type=cache,target=/root/.cache/pip \
     chmod +x /scripts/build_extensions.sh && . /scripts/build_extensions.sh
 # Clone default GPTQ
-RUN git clone https://github.com/oobabooga/GPTQ-for-LLaMa.git -b cuda /app/repositories/GPTQ-for-LLaMa
+#RUN git clone https://github.com/oobabooga/GPTQ-for-LLaMa.git -b cuda /app/repositories/GPTQ-for-LLaMa
 # Build and install default GPTQ ('quant_cuda')
-ARG TORCH_CUDA_ARCH_LIST="6.1;7.0;7.5;8.0;8.6+PTX"
-RUN cd /app/repositories/GPTQ-for-LLaMa/ && python3 setup_cuda.py install
+#ARG TORCH_CUDA_ARCH_LIST="6.1;7.0;7.5;8.0;8.6+PTX"
+#RUN cd /app/repositories/GPTQ-for-LLaMa/ && python3 setup_cuda.py install
 # Install flash attention for exllamav2
-RUN pip install flash-attn --no-build-isolation
+#RUN pip install flash-attn --no-build-isolation
 
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04 AS base
+FROM ubuntu:22.04 AS base
 # Runtime pre-reqs
 RUN apt-get update && apt-get install --no-install-recommends -y \
     python3-venv python3-dev git
@@ -77,47 +78,12 @@ ENTRYPOINT ["/scripts/docker-entrypoint.sh"]
 
 
 # VARIANT BUILDS
-FROM base AS cuda
-RUN echo "CUDA" >> /variant.txt
-RUN apt-get install --no-install-recommends -y git python3-dev python3-pip
-RUN rm -rf /app/repositories/GPTQ-for-LLaMa && \
-    git clone https://github.com/qwopqwop200/GPTQ-for-LLaMa -b cuda /app/repositories/GPTQ-for-LLaMa
-RUN pip3 uninstall -y quant-cuda && \
-    sed -i 's/^safetensors==0\.3\.0$/safetensors/g' /app/repositories/GPTQ-for-LLaMa/requirements.txt && \
-    pip3 install -r /app/repositories/GPTQ-for-LLaMa/requirements.txt
-ENV EXTRA_LAUNCH_ARGS=""
-CMD ["python3", "/app/server.py"]
-
-FROM base AS triton
-RUN echo "TRITON" >> /variant.txt
-RUN apt-get install --no-install-recommends -y git python3-dev build-essential python3-pip
-RUN rm -rf /app/repositories/GPTQ-for-LLaMa && \
-    git clone https://github.com/qwopqwop200/GPTQ-for-LLaMa -b triton /app/repositories/GPTQ-for-LLaMa
-RUN pip3 uninstall -y quant-cuda && \
-    sed -i 's/^safetensors==0\.3\.0$/safetensors/g' /app/repositories/GPTQ-for-LLaMa/requirements.txt && \
-    pip3 install -r /app/repositories/GPTQ-for-LLaMa/requirements.txt
-ENV EXTRA_LAUNCH_ARGS=""
-CMD ["python3", "/app/server.py"]
-
-FROM base AS monkey-patch
-RUN echo "4-BIT MONKEY-PATCH" >> /variant.txt
-RUN apt-get install --no-install-recommends -y git python3-dev build-essential python3-pip
-RUN git clone https://github.com/johnsmith0031/alpaca_lora_4bit /app/repositories/alpaca_lora_4bit && \
-    cd /app/repositories/alpaca_lora_4bit && git checkout 2f704b93c961bf202937b10aac9322b092afdce0
-ARG TORCH_CUDA_ARCH_LIST="8.6"
-RUN pip install git+https://github.com/sterlind/GPTQ-for-LLaMa.git@lora_4bit
-ENV EXTRA_LAUNCH_ARGS=""
-CMD ["python3", "/app/server.py", "--monkey-patch"]
 
 FROM base AS llama-cpu
 RUN echo "LLAMA-CPU" >> /variant.txt
 RUN apt-get install --no-install-recommends -y git python3-dev build-essential python3-pip
 RUN unset TORCH_CUDA_ARCH_LIST LLAMA_CUBLAS
-RUN pip uninstall -y llama_cpp_python_cuda llama-cpp-python && pip install llama-cpp-python --force-reinstall --upgrade
+#RUN pip uninstall -y llama_cpp_python_cuda llama-cpp-python && pip install llama-cpp-python --force-reinstall --upgrade
 ENV EXTRA_LAUNCH_ARGS=""
 CMD ["python3", "/app/server.py", "--cpu"]
 
-FROM base AS default
-RUN echo "DEFAULT" >> /variant.txt
-ENV EXTRA_LAUNCH_ARGS=""
-CMD ["python3", "/app/server.py"]
