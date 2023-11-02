@@ -11,7 +11,7 @@ RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN pip3 install --upgrade pip setuptools && \
     pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
-    pip3 install --upgrade requests beautifulsoup4 summarizer datetime PyPDF2
+    pip3 install --upgrade requests beautifulsoup4 summarizer datetime PyPDF2 chromadb==0.3.18 lxml optuna pandas==2.0.3 posthog==2.4.2 sentence_transformers==2.2.2 spacy pytextrank num2words
 
 FROM env_base AS app_base
 # Copy and enable all scripts
