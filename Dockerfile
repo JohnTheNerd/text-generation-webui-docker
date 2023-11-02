@@ -82,7 +82,7 @@ ENTRYPOINT ["/scripts/docker-entrypoint.sh"]
 
 FROM base AS llama-cpu
 RUN echo "LLAMA-CPU" >> /variant.txt
-RUN apt-get install --no-install-recommends -y git python3-dev build-essential python3-pip
+RUN DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y git python3-dev build-essential python3-pip ffmpeg curl tzdata
 RUN unset TORCH_CUDA_ARCH_LIST LLAMA_CUBLAS
 #RUN pip uninstall -y llama_cpp_python_cuda llama-cpp-python && pip install llama-cpp-python --force-reinstall --upgrade
 ENV EXTRA_LAUNCH_ARGS=""
